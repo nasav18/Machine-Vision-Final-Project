@@ -336,8 +336,7 @@ student = keras.Sequential(
     name="student",
 )
 
-# Clone student for later comparison
-student_scratch = keras.models.clone_model(student)
+ 
 Teacher Network
 
 from keras.utils import plot_model
@@ -352,17 +351,13 @@ teacher.compile(
 # Train and evaluate teacher on data.
 history = teacher.fit(train_images,train_labels, epochs=25)
 teacher.evaluate(test_images,test_labels)
-# summarize history for loss
-plt.plot(history.history['sparse_categorical_accuracy'])
-plt.title('Accuracy')
-plt.ylabel('loss')
-plt.xlabel('epoch')
-#plt.legend(['train', 'test'], loc='upper left')
-plt.show()
+
 y_pred= teacher.predict(test_images)
 predictions_class = np.argmax(y_pred, axis=-1)
 from sklearn.metrics import classification_report
 print(classification_report(test_labels, predictions_class))
+
+
 Student Distilled Network
 
 from keras.utils import plot_model
@@ -380,26 +375,11 @@ distiller.compile(
  
 # Distill teacher to student
 history_st= distiller.fit(train_images, train_labels, epochs=25)
-# summarize history for loss
-plt.plot(history_st.history['student_loss'])
-plt.title('Accuracy')
-plt.ylabel('loss')
-plt.xlabel('epoch')
-#plt.legend(['train', 'test'], loc='upper left')
-plt.show()
 y_pred= student.predict(test_images)
 predictions_class = np.argmax(y_pred, axis=-1)
 from sklearn.metrics import classification_report
 print(classification_report(test_labels, predictions_class))
- 
 
-# Train and evaluate student trained from scratch.
-student_scratch.fit(train_images,train_labels, epochs=25)
-student_scratch.evaluate(test_images,test_labels)
-y_pred= student_scratch.predict(test_images)
-predictions_class = np.argmax(y_pred, axis=-1)
-from sklearn.metrics import classification_report
-print(classification_report(test_labels, predictions_class))
 student.save('student.keras')
 teacher.save('teacher.keras')
 student_scratch.save('student_scratch.keras')
