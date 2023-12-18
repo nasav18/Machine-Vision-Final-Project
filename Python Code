@@ -1,0 +1,408 @@
+import pandas as pd
+from PIL import Image
+import os
+import cv2
+import numpy as np
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow import keras
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D, MaxPool2D, Flatten, Dense, BatchNormalization, Activation, Dropout, MaxPooling2D
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.regularizers import l2
+import matplotlib.pyplot as plt
+import random
+# Read the CSV file and split lines based on whitespace
+csv_path = "/kaggle/input/defective-solar-cells/elpv-dataset-master/labels.csv"
+images_folder = "/kaggle/input/defective-solar-cells/elpv-dataset-master"
+                
+with open(csv_path, "r") as file:
+    lines = file.read().splitlines()
+
+# Split each line into filename, label, and type
+data = []
+
+for line in lines:
+    parts = line.split()
+    if len(parts) == 3:
+        filename, label, _ = parts
+
+        # Original label
+        original_label = float(label)
+
+        # Map to more classes
+        if original_label == 0:
+            new_label = 0
+        elif 0 < original_label <= 0.3333333333333333:
+            new_label = 1
+        elif 0.3333333333333333 < original_label <=0.6666666666666666:
+            new_label = 2
+        else:
+            new_label = 3
+
+        data.append((os.path.join(images_folder, filename), new_label))
+IMG_SIZE = 224
+
+# Load images and labels 
+images = []
+labels = []
+
+for image_path, label in data:
+    image = Image.open(image_path)
+#     image = image.convert("RGB")
+    image = image.resize((IMG_SIZE, IMG_SIZE))
+    image = np.array(image)
+    images.append(image)
+    labels.append(label)
+    
+# Convert the lists dataframe
+# dataset_df = pd.DataFrame({'Image': images, 'Label': labels})
+
+# Convert the lists to numpy arrays
+images = np.array(images).reshape(-1,224, 224, 1)
+labels = np.array(labels)
+plt.figure(figsize=(12, 6))
+pd.DataFrame(labels).value_counts().plot(kind='bar')
+plt.title('Data Class Distribution')
+plt.xlabel('Class')
+plt.ylabel('Count')
+plt.show()
+from imblearn.over_sampling import SMOTE
+
+# Reshape the 4D image data into a 2D format
+num_samples, img_height, img_width, num_channels = images.shape
+images_2d = images.reshape((num_samples, img_height * img_width * num_channels))
+
+# Apply SMOTE to the 2D data
+smote = SMOTE(sampling_strategy='auto', random_state=42)
+images_resampled_2d, labels_resampled = smote.fit_resample(images_2d, labels)
+
+# Reshape the resampled 2D data back to 4D format
+images_resampled = images_resampled_2d.reshape((-1, img_height, img_width, num_channels))
+
+images = images_resampled
+labels = labels_resampled
+labels.shape
+plt.figure(figsize=(12, 6))
+pd.DataFrame(labels).value_counts().plot(kind='bar')
+plt.title('Data Class Distribution')
+plt.xlabel('Class')
+plt.ylabel('Count')
+plt.show()
+from keras import ImageDataGenerator
+
+datagen = ImageDataGenerator(
+    width_shift_range= 2.0,
+    height_shift_range= 2.0,
+    rotation_range = 20,
+    fill_mode = 'constant',
+)
+datagen.fit(X_train.reshape(image, 224, 224, 1))
+# Display some sample images
+# Generate 9 random indices
+sample_indices = random.sample(range(len(images)), 9)
+
+# Create a 3x3 grid of subplots for plotting the images
+plt.figure(figsize=(10, 10))
+plt.suptitle("Some Sample Images", fontsize=16)
+
+for i, idx in enumerate(sample_indices):
+    plt.subplot(3, 3, i + 1)
+    plt.imshow(images[idx], cmap='gray')  # Assuming images are grayscale; use 'cmap' based on your data
+    plt.title(f"Label: {labels[idx]}")
+    plt.axis('off')
+
+plt.show()
+# Define the image preprocessing function
+def image_preprocessing(img):
+    # equalize
+    img = img.astype('uint8')
+    clahe = cv2.createCLAHE(tileGridSize=(8, 8))
+    img = clahe.apply(img)
+    img = np.expand_dims(img, 2)
+    
+#     # Apply Sobel filters to detect vertical and diagonal edges
+#    vertical_edge = cv2.Sobel(img, cv2.CV_64F, 1, 0, ksize=3)
+#    diagonal_edge = cv2.Sobel(img, cv2.CV_64F, 1, 1, ksize=3)
+     
+#     # Combine the edges into one image
+#    combined_edges = cv2.addWeighted(vertical_edge, 0.5, diagonal_edge, 0.5, 0)
+
+#     # Normalize the values to the range [0, 255]
+#    combined_edges = cv2.normalize(combined_edges, None, 0, 255, cv2.NORM_MINMAX)
+
+#     # Convert to 8-bit unsigned integer format
+#    combined_edges = np.uint8(combined_edges)
+#    return combined_edges
+    return img
+enhanced_images = np.array([image_preprocessing(img) for img in images])
+
+# Display some sample images
+
+# Create a 3x3 grid of subplots for plotting the images and their enhanced versions
+plt.figure(figsize=(15, 15))
+plt.suptitle("Some Sample Images and Enhanced Versions", fontsize=16)
+
+for i, idx in enumerate(sample_indices):
+    # Plot the original image
+    plt.subplot(3, 6, 2 * i + 1)
+    plt.imshow(images[idx], cmap='gray')  # Assuming images are grayscale; use 'cmap' based on your data
+    plt.title(f"Label: {labels[idx]}")
+    plt.axis('off')
+
+    # Plot the enhanced version beside the original image
+    plt.subplot(3, 6, 2 * i + 2)
+    plt.imshow(enhanced_images[idx], cmap='gray')  # Assuming enhanced_images are grayscale; use 'cmap' based on your data
+    plt.title("Enhanced")
+    plt.axis('off')
+
+plt.show()
+from keras.utils import to_categorical
+train_images, test_images, train_labels, test_labels = train_test_split(images, labels, test_size=0.3, random_state=42)
+
+train_labels_enc = to_categorical(train_labels)
+print(train_labels_enc)
+
+test_labels_enc = to_categorical(test_labels)
+print(test_labels_enc)
+Knowledge Distillation/ Transfer Learning
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+import numpy as np
+import os
+import pickle
+import zipfile
+import random
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras.optimizers import RMSprop
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from shutil import copyfile
+import numpy as np
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import (
+    BatchNormalization, Conv2D, MaxPooling2D, Activation, Flatten, Dropout, Dense
+)
+from tensorflow.keras import backend as K
+from sklearn.preprocessing import LabelBinarizer
+from keras.preprocessing import image
+import matplotlib.pyplot as plt
+class Distiller(keras.Model):
+    def __init__(self, student, teacher):
+        super().__init__()
+        self.teacher = teacher
+        self.student = student
+
+    def compile(
+        self,
+        optimizer,
+        metrics,
+        student_loss_fn,
+        distillation_loss_fn,
+        alpha=0.1,
+        temperature=3,
+    ):
+        """ Configure the distiller.
+
+        Args:
+            optimizer: Keras optimizer for the student weights
+            metrics: Keras metrics for evaluation
+            student_loss_fn: Loss function of difference between student
+                predictions and ground-truth
+            distillation_loss_fn: Loss function of difference between soft
+                student predictions and soft teacher predictions
+            alpha: weight to student_loss_fn and 1-alpha to distillation_loss_fn
+            temperature: Temperature for softening probability distributions.
+                Larger temperature gives softer distributions.
+        """
+        super().compile(optimizer=optimizer, metrics=metrics)
+        self.student_loss_fn = student_loss_fn
+        self.distillation_loss_fn = distillation_loss_fn
+        self.alpha = alpha
+        self.temperature = temperature
+
+    def train_step(self, data):
+        # Unpack data
+        x, y = data
+
+        # Forward pass of teacher
+        teacher_predictions = self.teacher(x, training=False)
+
+        with tf.GradientTape() as tape:
+            # Forward pass of student
+            student_predictions = self.student(x, training=True)
+
+            # Compute losses
+            student_loss = self.student_loss_fn(y, student_predictions)
+
+            # Compute scaled distillation loss from https://arxiv.org/abs/1503.02531
+            # The magnitudes of the gradients produced by the soft targets scale
+            # as 1/T^2, multiply them by T^2 when using both hard and soft targets.
+            distillation_loss = (
+                self.distillation_loss_fn(
+                    tf.nn.softmax(teacher_predictions / self.temperature, axis=1),
+                    tf.nn.softmax(student_predictions / self.temperature, axis=1),
+                )
+                * self.temperature**2
+            )
+
+            loss = self.alpha * student_loss + (1 - self.alpha) * distillation_loss
+
+        # Compute gradients
+        trainable_vars = self.student.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+
+        # Update weights
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        # Update the metrics configured in `compile()`.
+        self.compiled_metrics.update_state(y, student_predictions)
+
+        # Return a dict of performance
+        results = {m.name: m.result() for m in self.metrics}
+        results.update(
+            {"student_loss": student_loss, "distillation_loss": distillation_loss}
+        )
+        return results
+
+    def test_step(self, data):
+        # Unpack the data
+        x, y = data
+
+        # Compute predictions
+        y_prediction = self.student(x, training=False)
+
+        # Calculate the loss
+        student_loss = self.student_loss_fn(y, y_prediction)
+
+        # Update the metrics.
+        self.compiled_metrics.update_state(y, y_prediction)
+
+        # Return a dict of performance
+        results = {m.name: m.result() for m in self.metrics}
+        results.update({"student_loss": student_loss})
+        return results
+teacher = keras.Sequential(name="teacher",)
+inputShape = (224,224,1)
+chanDim = -1
+if K.image_data_format() == "channels_first":
+           inputShape = (1, 224, 224)
+           chanDim = 1
+teacher.add(Conv2D(32, (3, 3), padding="same",input_shape=inputShape))
+teacher.add(Activation("relu"))
+teacher.add(BatchNormalization(axis=chanDim))
+teacher.add(MaxPooling2D(pool_size=(3, 3)))
+teacher.add(Dropout(0.25))
+teacher.add(Conv2D(64, (3, 3), padding="same"))
+teacher.add(Activation("relu"))
+teacher.add(BatchNormalization(axis=chanDim))
+teacher.add(Conv2D(64, (3, 3), padding="same"))
+teacher.add(Activation("relu"))
+teacher.add(BatchNormalization(axis=chanDim))
+teacher.add(MaxPooling2D(pool_size=(2, 2)))
+teacher.add(Dropout(0.25))
+teacher.add(Conv2D(128, (3, 3), padding="same"))
+teacher.add(Activation("relu"))
+teacher.add(BatchNormalization(axis=chanDim))
+teacher.add(Conv2D(128, (3, 3), padding="same"))
+teacher.add(Activation("relu"))
+teacher.add(BatchNormalization(axis=chanDim))
+teacher.add(MaxPooling2D(pool_size=(2, 2)))
+teacher.add(Dropout(0.25))
+teacher.add(Flatten())
+teacher.add(Dense(1024))
+teacher.add(Activation("relu"))
+teacher.add(BatchNormalization())
+teacher.add(Dropout(0.5))
+teacher.add(Dense(4))
+
+
+# Create the student
+student = keras.Sequential(
+    [
+        keras.Input(shape=(224,224,1)),
+        layers.Conv2D(16, (3, 3), strides=(2, 2), padding="same"),
+        layers.LeakyReLU(alpha=0.2),
+        layers.MaxPooling2D(pool_size=(2, 2), strides=(1, 1), padding="same"),
+        layers.Conv2D(32, (3, 3), strides=(2, 2), padding="same"),
+        layers.LeakyReLU(alpha=0.2),
+        layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2), padding="same"),
+        layers.Flatten(),
+        layers.Dense(4),
+    ],
+    name="student",
+)
+
+# Clone student for later comparison
+student_scratch = keras.models.clone_model(student)
+Teacher Network
+
+from keras.utils import plot_model
+plot_model(teacher, to_file='teacher_plot.png', show_shapes=True, show_layer_names=True)
+# Train teacher as usual
+teacher.compile(
+    optimizer=keras.optimizers.Adam(),
+    loss=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+    metrics=[keras.metrics.SparseCategoricalAccuracy()],
+)
+
+# Train and evaluate teacher on data.
+history = teacher.fit(train_images,train_labels, epochs=25)
+teacher.evaluate(test_images,test_labels)
+# summarize history for loss
+plt.plot(history.history['sparse_categorical_accuracy'])
+plt.title('Accuracy')
+plt.ylabel('loss')
+plt.xlabel('epoch')
+#plt.legend(['train', 'test'], loc='upper left')
+plt.show()
+y_pred= teacher.predict(test_images)
+predictions_class = np.argmax(y_pred, axis=-1)
+from sklearn.metrics import classification_report
+print(classification_report(test_labels, predictions_class))
+Student Distilled Network
+
+from keras.utils import plot_model
+plot_model(student, to_file='student_plot.png', show_shapes=True, show_layer_names=True)
+# Initialize and compile distiller
+distiller = Distiller(student=student, teacher=teacher)
+distiller.compile(
+    optimizer=keras.optimizers.Adam(),
+    metrics=[keras.metrics.SparseCategoricalAccuracy()],
+    student_loss_fn=keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+    distillation_loss_fn=keras.losses.KLDivergence(),
+    alpha=0.05,
+    temperature=10,
+)
+ 
+# Distill teacher to student
+history_st= distiller.fit(train_images, train_labels, epochs=25)
+# summarize history for loss
+plt.plot(history_st.history['student_loss'])
+plt.title('Accuracy')
+plt.ylabel('loss')
+plt.xlabel('epoch')
+#plt.legend(['train', 'test'], loc='upper left')
+plt.show()
+y_pred= student.predict(test_images)
+predictions_class = np.argmax(y_pred, axis=-1)
+from sklearn.metrics import classification_report
+print(classification_report(test_labels, predictions_class))
+ 
+
+# Train and evaluate student trained from scratch.
+student_scratch.fit(train_images,train_labels, epochs=25)
+student_scratch.evaluate(test_images,test_labels)
+y_pred= student_scratch.predict(test_images)
+predictions_class = np.argmax(y_pred, axis=-1)
+from sklearn.metrics import classification_report
+print(classification_report(test_labels, predictions_class))
+student.save('student.keras')
+teacher.save('teacher.keras')
+student_scratch.save('student_scratch.keras')
+student.save_weights('student_weights.keras')
+teacher.save_weights('teacher_weights.keras')
+student_scratch.save_weights('student_scratch_weights.keras')
